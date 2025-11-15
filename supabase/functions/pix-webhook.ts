@@ -1,74 +1,57 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
+import { serve } from "https://deno.land/std@0.203.0/http/server.ts";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// Crie o cliente Supabase com Service Role Key
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+);
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
   try {
-    const url = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(url, serviceKey);
+    if (req.method !== "POST") {
+      return new Response("Method not allowed", { status: 405 });
+    }
 
     const body = await req.json();
 
-    if (!body.pix || !Array.isArray(body.pix)) {
-      return new Response(
-        JSON.stringify({ error: "Payload inválido" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-      );
+    // Se for webhook
+    if (body.type === "webhook" || body.kiwify_event) {
+      console.log("Recebido webhook:", body);
+
+      // Exemplo de log no Supabase
+      await supabase.from("pix_webhooks").insert([
+        { payload: body, received_at: new Date().toISOString() },
+      ]);
+
+      return new Response(JSON.stringify({ status: "ok", source: "webhook" }), {
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    const results = [];
+    // Se for consulta PIX
+    if (body.type === "consulta_pix" && body.pix) {
+      console.log("Consulta PIX:", body.pix);
 
-    for (const pix of body.pix) {
-      // ✅ Pega txid do banco ou fallback para endToEndId
-      const txid = pix.txid && pix.txid !== "sem-txid" ? pix.txid : pix.endToEndId;
+      // Aqui você faria a chamada real à API PIX do PSP/Banco
+      // Simulando retorno:
+      const resultado = body.pix.map((p: any) => ({
+        ...p,
+        status: "CONCLUIDO",
+        confirmadoEm: new Date().toISOString(),
+      }));
 
-      // ✅ Extrai os valores reais do payload
-      const valor = parseFloat(pix.valor) || 0;
-      const pagador = pix.pagador?.nome || "Desconhecido";
-      const horario = pix.horario || new Date().toISOString();
-      const infoPagador = pix.infoPagador || null;
-
-      // ✅ Tenta inserir no banco
-      const { data, error } = await supabase
-        .from("pix_recebidos")
-        .insert([
-          { txid, valor, pagador, horario, info_pagador: infoPagador }
-        ])
-        .select();
-
-      if (error) {
-        if (error.code === "23505") {
-          console.log(`PIX com txid ${txid} já existe, ignorando`);
-          results.push({ txid, status: "duplicado" });
-        } else {
-          console.error("Erro ao salvar PIX:", error);
-          results.push({ txid, status: "erro", message: error.message });
-        }
-      } else {
-        console.log(`PIX salvo com sucesso:`, data);
-        results.push({ txid, status: "salvo", data });
-      }
+      return new Response(JSON.stringify({ status: "ok", pix: resultado }), {
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    return new Response(
-      JSON.stringify({ success: true, results }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
-    );
-
+    return new Response("Tipo de requisição não identificado", { status: 400 });
   } catch (err) {
-    console.error("Erro interno na função PIX:", err);
-    return new Response(
-      JSON.stringify({ error: "Falha interna" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
-    );
+    console.error(err);
+    return new Response(JSON.stringify({ error: err.message }), {
+      headers: { "Content-Type": "application/json" },
+      status: 500,
+    });
   }
 });
