@@ -7,7 +7,7 @@ import { DollarSign, Clock, User } from "lucide-react";
 interface PixRecebido {
   id: string;
   valor: number;
-  pagador: string;
+  info_pagador: string;
   horario: string;
   txid: string;
   created_at: string;
@@ -62,7 +62,7 @@ const Index = () => {
           toast.success(
             `Novo PIX recebido! R$ ${novoPix.valor.toFixed(2)}`,
             {
-              description: `De: ${novoPix.pagador}`,
+              description: `De: ${novoPix.info_pagador}`,
               duration: 5000,
             }
           );
@@ -159,7 +159,7 @@ const Index = () => {
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-muted-foreground" />
                         <span className="font-medium text-foreground">
-                          {pix.pagador}
+                          {pix.info_pagador}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">

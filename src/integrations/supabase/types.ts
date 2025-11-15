@@ -19,7 +19,7 @@ export type Database = {
           created_at: string
           horario: string
           id: string
-          pagador: string
+          info_pagador: string
           txid: string
           valor: number
         }
@@ -27,7 +27,7 @@ export type Database = {
           created_at?: string
           horario?: string
           id?: string
-          pagador: string
+          info_pagador: string
           txid: string
           valor: number
         }
@@ -35,7 +35,7 @@ export type Database = {
           created_at?: string
           horario?: string
           id?: string
-          pagador?: string
+          info_pagador?: string
           txid?: string
           valor?: number
         }
