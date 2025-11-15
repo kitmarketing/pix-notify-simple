@@ -29,11 +29,12 @@ serve(async (req) => {
     const results = [];
 
     for (const pix of body.pix) {
-      // ✅ TXID válido: ignora "sem-txid"
-      const txid =
-        pix.txid && pix.txid !== "sem-txid"
-          ? pix.txid
-          : pix.endToEndId || crypto.randomUUID();
+      // ✅ TXID correto: prioriza txid, depois endToEndId, depois UUID aleatório
+      const txid = pix.txid && pix.txid !== "sem-txid"
+        ? pix.txid
+        : (pix.endToEndId && pix.endToEndId !== "sem-txid"
+            ? pix.endToEndId
+            : crypto.randomUUID());
 
       const valor = parseFloat(pix.valor) || 0;
       const pagador = pix.pagador?.nome || "Desconhecido";
