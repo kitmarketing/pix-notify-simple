@@ -26,12 +26,12 @@ serve(async (req) => {
     const valor = parseFloat(evento.valor ?? "0");
     const pagador = evento.pagador?.nome || "Desconhecido";
     const horario = evento.horario || new Date().toISOString();
-    const infoPagador = evento.infoPagador || null;
 
-    // 🆔 TXID sempre único (não salvar "sem-txid")
-    const txidFinal = evento.txid && evento.txid !== "sem-txid"
-      ? evento.txid
-      : evento.endToEndId || crypto.randomUUID();
+    // 🆔 TXID sempre único e válido
+    const txidFinal =
+      evento.txid && evento.txid !== "sem-txid"
+        ? evento.txid
+        : evento.endToEndId || crypto.randomUUID();
 
     // 🔗 Conecta ao Supabase
     const supabase = createClient(
@@ -47,7 +47,7 @@ serve(async (req) => {
         pagador,
         horario,
         txid: txidFinal,
-        info_pagador: infoPagador
+        info_pagador: evento.infoPagador || null
       })
       .select()
       .single();
