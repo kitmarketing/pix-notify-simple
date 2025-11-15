@@ -13,15 +13,6 @@ serve(async (req) => {
   }
 
   try {
-    // 🔐 Autorização igual ao webhook
-    const auth = req.headers.get("authorization");
-    if (!auth || auth !== `Bearer ${Deno.env.get("PAINEL_SECRET")}`) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-        status: 401 
-      });
-    }
-
     const url = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(url, serviceKey);
