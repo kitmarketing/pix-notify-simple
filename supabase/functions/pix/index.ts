@@ -13,6 +13,15 @@ serve(async (req) => {
   }
 
   try {
+    // 🔐 Autorização igual ao webhook
+    const auth = req.headers.get("authorization");
+    if (!auth || auth !== `Bearer ${Deno.env.get("PAINEL_SECRET")}`) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { 
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, 
+        status: 401 
+      });
+    }
+
     const url = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(url, serviceKey);
@@ -29,12 +38,8 @@ serve(async (req) => {
     const results = [];
 
     for (const pix of body.pix) {
-      // ✅ TXID correto: prioriza txid, depois endToEndId, depois UUID aleatório
-      const txid = pix.txid && pix.txid !== "sem-txid"
-        ? pix.txid
-        : (pix.endToEndId && pix.endToEndId !== "sem-txid"
-            ? pix.endToEndId
-            : crypto.randomUUID());
+      // ✅ TXID único: usa o fornecido ou fallback para endToEndId
+      const txid = pix.txid && pix.txid !== "sem-txid" ? pix.txid : pix.endToEndId || crypto.randomUUID();
 
       const valor = parseFloat(pix.valor) || 0;
       const pagador = pix.pagador?.nome || "Desconhecido";
@@ -48,14 +53,14 @@ serve(async (req) => {
 
       if (error) {
         if (error.code === "23505") {
-          console.log(`⚠ PIX com txid ${txid} já existe, ignorando`);
+          console.log(`PIX duplicado ignorado: ${txid}`);
           results.push({ txid, status: "duplicado" });
         } else {
           console.error("Erro ao salvar PIX:", error);
           results.push({ txid, status: "erro", message: error.message });
         }
       } else {
-        console.log(`💾 PIX salvo com sucesso:`, data);
+        console.log("PIX salvo com sucesso:", data);
         results.push({ txid, status: "salvo", data });
       }
     }
@@ -68,7 +73,7 @@ serve(async (req) => {
   } catch (err) {
     console.error("Erro interno na função PIX:", err);
     return new Response(
-      JSON.stringify({ error: "Falha interna" }),
+      JSON.stringify({ error: "Falha interna", details: err?.message || err }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
