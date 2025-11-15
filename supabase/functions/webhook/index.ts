@@ -1,90 +1,106 @@
-// /functions/webhook/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const connectedClients = new Set<WebSocket>();
 
 serve(async (req) => {
-  try {
-    // 🔐 Autorização
-    const auth = req.headers.get("authorization");
-    if (!auth || auth !== `Bearer ${Deno.env.get("PAINEL_SECRET")}`) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-    }
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
-    // 📥 Lê o payload
-    const body = await req.json();
-    console.log("📩 Webhook recebido:", body);
+  // WebSocket connection
+  const upgrade = req.headers.get("upgrade") || "";
+  if (upgrade.toLowerCase() === "websocket") {
+    const { socket, response } = Deno.upgradeWebSocket(req);
+    
+    socket.onopen = () => {
+      console.log("Cliente WebSocket conectado");
+      connectedClients.add(socket);
+    };
+    
+    socket.onclose = () => {
+      console.log("Cliente WebSocket desconectado");
+      connectedClients.delete(socket);
+    };
+    
+    socket.onerror = (error) => {
+      console.error("Erro no WebSocket:", error);
+      connectedClients.delete(socket);
+    };
+    
+    return response;
+  }
 
-    if (!body.pix || body.pix.length === 0) {
-      return new Response(
-        JSON.stringify({ success: false, message: "Nenhum PIX no payload" }),
-        { status: 200 }
-      );
-    }
+  // Webhook POST
+  if (req.method === 'POST') {
+    try {
+      const body = await req.json();
+      console.log('Webhook recebido do Banco do Brasil:', JSON.stringify(body));
 
-    const evento = body.pix[0];
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const valor = parseFloat(evento.valor ?? "0");
-    const pagador = evento.pagador?.nome || "Desconhecido";
-    const horario = evento.horario || new Date().toISOString();
+      // Extrai os dados do PIX do payload do BB
+      const pixData = {
+        valor: body.pix?.valor || body.valor || 0,
+        pagador: body.pix?.pagador?.nome || body.pagador || 'Desconhecido',
+        horario: body.pix?.horario || body.horario || new Date().toISOString(),
+        txid: body.pix?.txid || body.txid || body.endToEndId || 'sem-txid',
+      };
 
-    // 🆔 TXID sempre único e válido
-    const txidFinal =
-      evento.txid && evento.txid !== "sem-txid"
-        ? evento.txid
-        : evento.endToEndId || crypto.randomUUID();
+      // Salva no banco
+      const { data, error } = await supabase
+        .from('pix_recebidos')
+        .insert([pixData])
+        .select()
+        .single();
 
-    // 🔗 Conecta ao Supabase
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
-    // 💾 Insere no banco
-    const { data, error } = await supabase
-      .from("pix_recebidos")
-      .insert({
-        valor,
-        pagador,
-        horario,
-        txid: txidFinal,
-        info_pagador: evento.infoPagador || null
-      })
-      .select()
-      .single();
-
-    if (error) {
-      // Trata duplicidade sem quebrar o webhook
-      if (error.code === "23505") {
-        console.log("⚠ PIX duplicado ignorado:", txidFinal);
-        return new Response(JSON.stringify({ success: true, duplicated: true }), {
-          status: 200
-        });
+      if (error) {
+        console.error('Erro ao salvar PIX:', error);
+        throw error;
       }
 
-      console.error("Erro ao salvar PIX:", error);
+      console.log('PIX salvo com sucesso:', data);
+
+      // Notifica todos os clientes conectados via WebSocket
+      const message = JSON.stringify({
+        type: 'novo_pix',
+        data: data
+      });
+
+      connectedClients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(message);
+        }
+      });
+
+      console.log(`Notificação enviada para ${connectedClients.size} cliente(s)`);
+
       return new Response(
-        JSON.stringify({ error: "Erro ao salvar PIX", details: error }),
-        { status: 500 }
+        JSON.stringify({ success: true, data }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200
+        }
+      );
+    } catch (error) {
+      console.error('Erro no webhook:', error);
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      return new Response(
+        JSON.stringify({ error: message }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500
+        }
       );
     }
-
-    console.log("💾 PIX salvo:", data);
-
-    // 📡 Envia broadcast
-    await supabase.channel("pix_channel").send({
-      type: "broadcast",
-      event: "novo_pix",
-      payload: data
-    });
-
-    return new Response(JSON.stringify({ success: true, data }), { status: 200 });
-
-  } catch (err) {
-    console.error("Erro no webhook:", err);
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    return new Response(
-      JSON.stringify({ error: "Erro desconhecido", details: errorMessage }),
-      { status: 500 }
-    );
   }
+
+  return new Response('Method not allowed', { status: 405 });
 });
