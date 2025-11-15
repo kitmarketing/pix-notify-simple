@@ -49,7 +49,8 @@ serve(async (req) => {
     return new Response("Tipo de requisição não identificado", { status: 400 });
   } catch (err) {
     console.error(err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { "Content-Type": "application/json" },
       status: 500,
     });
