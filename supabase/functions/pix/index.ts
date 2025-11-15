@@ -35,11 +35,10 @@ serve(async (req) => {
       const valor = parseFloat(pix.valor) || 0;
       const pagador = pix.pagador?.nome || "Desconhecido";
       const horario = pix.horario || new Date().toISOString();
-      const infoPagador = pix.infoPagador || null;
 
       const { data, error } = await supabase
         .from("pix_recebidos")
-        .insert([{ txid, valor, pagador, horario, info_pagador: infoPagador }])
+        .insert([{ txid, valor, pagador, horario }])
         .select();
 
       if (error) {
