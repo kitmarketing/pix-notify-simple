@@ -72,8 +72,9 @@ serve(async (req) => {
 
   } catch (err) {
     console.error("Erro interno na função PIX:", err);
+    const errorMessage = err instanceof Error ? err.message : String(err);
     return new Response(
-      JSON.stringify({ error: "Falha interna", details: err?.message || err }),
+      JSON.stringify({ error: "Falha interna", details: errorMessage }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
