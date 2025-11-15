@@ -17,12 +17,17 @@ const Index = () => {
   const [pixList, setPixList] = useState<PixRecebido[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Buscar PIX recebidos
+  // Buscar PIX recebidos de hoje
   const fetchPix = async () => {
     try {
+      // Data de hoje às 00:00:00
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      
       const { data, error } = await supabase
         .from('pix_recebidos')
         .select('*')
+        .gte('created_at', hoje.toISOString())
         .order('created_at', { ascending: false });
       
       if (error) throw error;
