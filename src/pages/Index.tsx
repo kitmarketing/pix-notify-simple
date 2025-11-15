@@ -20,11 +20,14 @@ const Index = () => {
   // Buscar PIX recebidos
   const fetchPix = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('pix');
+      const { data, error } = await supabase
+        .from('pix_recebidos')
+        .select('*')
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       
-      setPixList(data.pix || []);
+      setPixList(data || []);
     } catch (error) {
       console.error('Erro ao buscar PIX:', error);
       toast.error('Erro ao carregar PIX recebidos');
