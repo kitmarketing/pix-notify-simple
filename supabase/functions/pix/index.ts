@@ -33,12 +33,12 @@ serve(async (req) => {
       const txid = pix.txid && pix.txid !== "sem-txid" ? pix.txid : pix.endToEndId || crypto.randomUUID();
 
       const valor = parseFloat(pix.valor) || 0;
-      const pagador = pix.pagador?.nome || "Desconhecido";
+      const info_pagador = pix.pagador?.nome || "Desconhecido";
       const horario = pix.horario || new Date().toISOString();
 
       const { data, error } = await supabase
         .from("pix_recebidos")
-        .insert([{ txid, valor, pagador, horario }])
+        .insert([{ txid, valor, info_pagador, horario }])
         .select();
 
       if (error) {
