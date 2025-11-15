@@ -28,16 +28,16 @@ serve(async (req) => {
     const results = [];
 
     for (const pix of body.pix) {
-      // Pega txid do banco ou fallback para endToEndId
+      // ✅ Pega txid do banco ou fallback para endToEndId
       const txid = pix.txid && pix.txid !== "sem-txid" ? pix.txid : pix.endToEndId;
 
-      // Extrai os valores reais do payload
+      // ✅ Extrai os valores reais do payload
       const valor = parseFloat(pix.valor) || 0;
       const pagador = pix.pagador?.nome || "Desconhecido";
       const horario = pix.horario || new Date().toISOString();
       const infoPagador = pix.infoPagador || null;
 
-      // Tenta inserir no banco
+      // ✅ Tenta inserir no banco
       const { data, error } = await supabase
         .from("pix_recebidos")
         .insert([
