@@ -44,21 +44,19 @@ const Index = () => {
   useEffect(() => {
     fetchPix();
 
-    // Conectar ao WebSocket
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const wsUrl = `wss://${projectId}.supabase.co/functions/v1/webhook`;
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log('WebSocket conectado');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        
-        if (message.type === 'novo_pix') {
-          const novoPix = message.data;
+    // Conectar ao Supabase Realtime para notificações em tempo real
+    const channel = supabase
+      .channel('pix-recebidos-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'pix_recebidos'
+        },
+        (payload) => {
+          console.log('Novo PIX recebido via realtime:', payload);
+          const novoPix = payload.new as PixRecebido;
           
           // Adiciona o novo PIX no topo da lista
           setPixList(prev => [novoPix, ...prev]);
@@ -72,21 +70,11 @@ const Index = () => {
             }
           );
         }
-      } catch (error) {
-        console.error('Erro ao processar mensagem WebSocket:', error);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('Erro no WebSocket:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket desconectado');
-    };
+      )
+      .subscribe();
 
     return () => {
-      ws.close();
+      supabase.removeChannel(channel);
     };
   }, []);
 
