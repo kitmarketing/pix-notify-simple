@@ -1,74 +1,77 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
   try {
-    const url = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(url, serviceKey);
-
+    // 📥 Lê o payload
     const body = await req.json();
+    console.log("📩 Webhook recebido:", body);
 
-    if (!body.pix || !Array.isArray(body.pix)) {
+    if (!body.pix || body.pix.length === 0) {
       return new Response(
-        JSON.stringify({ error: "Payload inválido" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        JSON.stringify({ success: false, message: "Nenhum PIX no payload" }),
+        { status: 200 }
       );
     }
 
-    const results = [];
+    const evento = body.pix[0];
 
-    for (const pix of body.pix) {
-      // ✅ Pega txid do banco ou fallback para endToEndId
-      const txid = pix.txid && pix.txid !== "sem-txid" ? pix.txid : pix.endToEndId;
+    const valor = parseFloat(evento.valor ?? "0");
+    const pagador = evento.pagador?.nome || "Desconhecido";
+    const horario = evento.horario || new Date().toISOString();
 
-      // ✅ Extrai os valores reais do payload
-      const valor = parseFloat(pix.valor) || 0;
-      const pagador = pix.pagador?.nome || "Desconhecido";
-      const horario = pix.horario || new Date().toISOString();
-      const infoPagador = pix.infoPagador || null;
+    // 🆔 TXID sempre único
+    const txidFinal = evento.txid || evento.endToEndId || crypto.randomUUID();
 
-      // ✅ Tenta inserir no banco
-      const { data, error } = await supabase
-        .from("pix_recebidos")
-        .insert([
-          { txid, valor, pagador, horario, info_pagador: infoPagador }
-        ])
-        .select();
-
-      if (error) {
-        if (error.code === "23505") {
-          console.log(`PIX com txid ${txid} já existe, ignorando`);
-          results.push({ txid, status: "duplicado" });
-        } else {
-          console.error("Erro ao salvar PIX:", error);
-          results.push({ txid, status: "erro", message: error.message });
-        }
-      } else {
-        console.log(`PIX salvo com sucesso:`, data);
-        results.push({ txid, status: "salvo", data });
-      }
-    }
-
-    return new Response(
-      JSON.stringify({ success: true, results }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+    // 🔗 Conecta ao Supabase
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // 💾 Insere no banco
+    const { data, error } = await supabase
+      .from("pix_recebidos")
+      .insert({
+        valor,
+        pagador,
+        horario,
+        txid: txidFinal
+      })
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === "23505") {
+        console.log("⚠ PIX duplicado ignorado:", txidFinal);
+        return new Response(JSON.stringify({ success: true, duplicated: true }), {
+          status: 200
+        });
+      }
+
+      console.error("Erro ao salvar PIX:", error);
+      return new Response(
+        JSON.stringify({ error: "Erro ao salvar PIX", details: error }),
+        { status: 500 }
+      );
+    }
+
+    console.log("💾 PIX salvo:", data);
+
+    // 📡 Envia broadcast
+    await supabase.channel("pix_channel").send({
+      type: "broadcast",
+      event: "novo_pix",
+      payload: data
+    });
+
+    return new Response(JSON.stringify({ success: true, data }), { status: 200 });
+
   } catch (err) {
-    console.error("Erro interno na função PIX:", err);
+    console.error("Erro no webhook:", err);
     return new Response(
-      JSON.stringify({ error: "Falha interna" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      JSON.stringify({ error: "Erro desconhecido", details: err?.message || err }),
+      { status: 500 }
     );
   }
 });
