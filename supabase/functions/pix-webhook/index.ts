@@ -69,8 +69,9 @@ serve(async (req) => {
 
   } catch (err) {
     console.error("Erro no webhook:", err);
+    const errorMessage = err instanceof Error ? err.message : String(err);
     return new Response(
-      JSON.stringify({ error: "Erro desconhecido", details: err?.message || err }),
+      JSON.stringify({ error: "Erro desconhecido", details: errorMessage }),
       { status: 500 }
     );
   }
