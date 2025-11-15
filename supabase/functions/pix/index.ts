@@ -16,7 +16,6 @@ serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(url, serviceKey);
 
-    // Espera receber o payload do Banco do Brasil
     const body = await req.json();
 
     if (!body.pix || !Array.isArray(body.pix)) {
@@ -29,26 +28,25 @@ serve(async (req) => {
     const results = [];
 
     for (const pix of body.pix) {
-      // Usa txid do banco, ou fallback para endToEndId
+      // Pega txid do banco ou fallback para endToEndId
       const txid = pix.txid && pix.txid !== "sem-txid" ? pix.txid : pix.endToEndId;
+
+      // Extrai os valores reais do payload
+      const valor = parseFloat(pix.valor) || 0;
+      const pagador = pix.pagador?.nome || "Desconhecido";
+      const horario = pix.horario || new Date().toISOString();
+      const infoPagador = pix.infoPagador || null;
 
       // Tenta inserir no banco
       const { data, error } = await supabase
         .from("pix_recebidos")
         .insert([
-          {
-            txid,
-            valor: parseFloat(pix.valor),
-            pagador: pix.pagador?.nome || "Desconhecido",
-            horario: pix.horario || new Date().toISOString(),
-            info_pagador: pix.infoPagador || null
-          }
+          { txid, valor, pagador, horario, info_pagador: infoPagador }
         ])
         .select();
 
       if (error) {
         if (error.code === "23505") {
-          // Duplicate key, ignora
           console.log(`PIX com txid ${txid} já existe, ignorando`);
           results.push({ txid, status: "duplicado" });
         } else {
@@ -56,6 +54,7 @@ serve(async (req) => {
           results.push({ txid, status: "erro", message: error.message });
         }
       } else {
+        console.log(`PIX salvo com sucesso:`, data);
         results.push({ txid, status: "salvo", data });
       }
     }
