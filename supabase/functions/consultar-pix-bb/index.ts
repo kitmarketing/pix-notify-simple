@@ -27,8 +27,45 @@ serve(async (req) => {
       ambiente = 'producao' 
     }: ConsultarPixParams = await req.json();
 
+    // Função para renovar token do BB automaticamente
+    async function renovarTokenBB(): Promise<string | null> {
+      const BB_CLIENT_ID = Deno.env.get("BB_CLIENT_ID");
+      const BB_CLIENT_SECRET = Deno.env.get("BB_CLIENT_SECRET");
+      
+      if (!BB_CLIENT_ID || !BB_CLIENT_SECRET) {
+        console.error("Credenciais BB não configuradas");
+        return null;
+      }
+
+      const tokenUrl = "https://oauth.bb.com.br/oauth/token";
+      const credentials = btoa(`${BB_CLIENT_ID}:${BB_CLIENT_SECRET}`);
+
+      try {
+        const response = await fetch(tokenUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Basic ${credentials}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: "grant_type=client_credentials&scope=pix.read pix.write",
+        });
+
+        if (!response.ok) {
+          console.error(`Erro ao renovar token: ${response.status}`);
+          return null;
+        }
+
+        const data = await response.json();
+        console.log("✅ Token BB renovado com sucesso!");
+        return data.access_token;
+      } catch (error) {
+        console.error("Erro ao renovar token:", error);
+        return null;
+      }
+    }
+
     // Usar o Bearer Token fornecido ou o do ambiente
-    const token = bearerToken || Deno.env.get("BB_BEARER_TOKEN");
+    let token = bearerToken || Deno.env.get("BB_BEARER_TOKEN");
     
     if (!token) {
       return new Response(
@@ -67,13 +104,33 @@ serve(async (req) => {
     }
 
     // Fazer requisição à API do BB
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });
+
+    // Se retornou 401 e não foi passado bearerToken customizado, tentar renovar
+    if (response.status === 401 && !bearerToken) {
+      console.log("⚠️ Token expirado, renovando automaticamente...");
+      
+      const novoToken = await renovarTokenBB();
+      
+      if (novoToken) {
+        token = novoToken;
+        
+        // Tentar novamente com novo token
+        response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      }
+    }
 
     const data = await response.json();
 
