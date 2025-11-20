@@ -1,4 +1,3 @@
-// supabase/functions/poll_pix_bb/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -11,38 +10,41 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  console.log("🔄 Iniciando polling de PIX via servidor intermediário...");
+
   try {
-    // Parâmetros de polling
-    const url = new URL(req.url);
-    const inicio = url.searchParams.get("inicio");
-    const fim = url.searchParams.get("fim");
+    // URL do seu servidor PIX
+    const PIX_SERVER_URL = "https://pix.zapinteligente.com";
 
-    // URL do seu servidor Node.js (proxy)
-    const serverUrl = `https://pix.zapinteligente.com?inicio=${encodeURIComponent(inicio!)}&fim=${encodeURIComponent(fim!)}`;
-
-    // Faz a requisição para o servidor
-    const response = await fetch(serverUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
+    // Faz a chamada para o servidor PIX
+    const resposta = await fetch(PIX_SERVER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ acao: "polling" }), // você pode enviar infos extras se quiser
     });
 
-    const data = await response.json();
+    if (!resposta.ok) {
+      const errorText = await resposta.text();
+      throw new Error(`Servidor PIX retornou ${resposta.status}: ${errorText}`);
+    }
+
+    const data = await resposta.json();
+
+    console.log("✅ Polling recebido do servidor PIX:", data);
 
     return new Response(JSON.stringify(data), {
-      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
     });
 
-  } catch (err: any) {
-    console.error("❌ Erro no polling via proxy:", err);
+  } catch (err) {
+    console.error("❌ Erro no polling via servidor PIX:", err);
     return new Response(JSON.stringify({
-      error: "Erro no polling via proxy",
-      detalhes: err.message
+      error: "Erro no polling via servidor PIX",
+      detalhes: err instanceof Error ? err.message : String(err)
     }), {
-      status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500
     });
   }
 });
