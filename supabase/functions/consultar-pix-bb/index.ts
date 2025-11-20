@@ -19,195 +19,70 @@ serve(async (req) => {
   }
 
   try {
-    const { 
-      bearerToken, 
-      e2eid, 
-      dataInicio, 
-      dataFim, 
-      ambiente = 'producao' 
-    }: ConsultarPixParams = await req.json();
+    const { bearerToken, e2eid, dataInicio, dataFim, ambiente = 'producao' }: ConsultarPixParams = await req.json();
 
-    // Função para renovar token do BB automaticamente
-    async function renovarTokenBB(): Promise<string | null> {
-      const BB_CLIENT_ID = Deno.env.get("BB_CLIENT_ID");
-      const BB_CLIENT_SECRET = Deno.env.get("BB_CLIENT_SECRET");
-      
-      if (!BB_CLIENT_ID || !BB_CLIENT_SECRET) {
-        console.error("Credenciais BB não configuradas");
-        return null;
-      }
-
-      const tokenUrl = "https://oauth.bb.com.br/oauth/token";
-      const credentials = btoa(`${BB_CLIENT_ID}:${BB_CLIENT_SECRET}`);
-
-      try {
-        const response = await fetch(tokenUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": `Basic ${credentials}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: "grant_type=client_credentials&scope=pix.read pix.write",
-        });
-
-        if (!response.ok) {
-          console.error(`Erro ao renovar token: ${response.status}`);
-          return null;
-        }
-
-        const data = await response.json();
-        console.log("✅ Token BB renovado com sucesso!");
-        return data.access_token;
-      } catch (error) {
-        console.error("Erro ao renovar token:", error);
-        return null;
-      }
-    }
-
-    // Usar o Bearer Token fornecido ou o do ambiente
-    let token = bearerToken || Deno.env.get("BB_BEARER_TOKEN");
-    
-    if (!token) {
-      return new Response(
-        JSON.stringify({ 
-          error: "Bearer Token não fornecido",
-          detalhes: "Forneça o bearerToken no corpo da requisição ou configure BB_BEARER_TOKEN"
-        }), 
-        { 
-          headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-          status: 400 
-        }
-      );
-    }
-
-    // Definir URL base de acordo com o ambiente
-    const baseUrl = ambiente === 'sandbox' 
-      ? 'https://api.sandbox.bb.com.br/pix/v2'
-      : 'https://api-pix.bb.com.br/pix/v2';
+    // Definir URL base do seu servidor proxy
+    const baseUrl = ambiente === 'sandbox'
+      ? 'https://pix.zapinteligente.com/sandbox'
+      : 'https://pix.zapinteligente.com';
 
     let url: string;
-    
-    // Consultar Pix específico por e2eid
+
+    // Consultar Pix específico
     if (e2eid) {
       url = `${baseUrl}/pix/${e2eid}`;
       console.log(`Consultando Pix específico: ${e2eid}`);
-    } 
-    // Consultar todos os Pix com filtros opcionais
-    else {
+    } else {
       const params = new URLSearchParams();
-      
       if (dataInicio) params.append('inicio', dataInicio);
       if (dataFim) params.append('fim', dataFim);
-      
       url = `${baseUrl}/pix${params.toString() ? '?' + params.toString() : ''}`;
       console.log(`Consultando Pix recebidos: ${url}`);
     }
 
-    // Fazer requisição à API do BB
-    let response = await fetch(url, {
+    // Fazer requisição ao servidor proxy
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': bearerToken ? `Bearer ${bearerToken}` : '',
         'Content-Type': 'application/json',
       },
     });
 
-    // Se retornou 401 e não foi passado bearerToken customizado, tentar renovar
-    if (response.status === 401 && !bearerToken) {
-      console.log("⚠️ Token expirado, renovando automaticamente...");
-      
-      const novoToken = await renovarTokenBB();
-      
-      if (novoToken) {
-        token = novoToken;
-        
-        // Tentar novamente com novo token
-        response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-      }
-    }
-
     const data = await response.json();
 
-    // Tratamento de erros HTTP
     if (!response.ok) {
       console.error(`Erro HTTP ${response.status}:`, data);
-      
-      let errorMessage = "Erro ao consultar API do Banco do Brasil";
-      let errorDetails = data;
-
-      switch (response.status) {
-        case 403:
-          errorMessage = "Acesso Negado";
-          errorDetails = "Token inválido ou sem permissões necessárias";
-          break;
-        case 404:
-          errorMessage = "Não Encontrado";
-          errorDetails = e2eid 
-            ? `Pix com e2eid ${e2eid} não foi encontrado`
-            : "Endpoint não encontrado";
-          break;
-        case 422:
-          errorMessage = "Erro Negocial";
-          errorDetails = "Dados fornecidos são inválidos ou não atendem às regras de negócio";
-          break;
-        case 500:
-          errorMessage = "Erro Interno do Servidor";
-          errorDetails = "O servidor do Banco do Brasil encontrou um erro interno";
-          break;
-        case 503:
-          errorMessage = "Serviço Indisponível";
-          errorDetails = "A API do Banco do Brasil está temporariamente indisponível";
-          break;
-      }
-
       return new Response(
-        JSON.stringify({ 
-          error: errorMessage,
-          detalhes: errorDetails,
+        JSON.stringify({
+          error: "Erro ao consultar servidor proxy",
+          detalhes: data,
           status: response.status,
-          dadosOriginais: data
-        }), 
-        { 
-          headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-          status: response.status 
-        }
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: response.status }
       );
     }
 
-    // Sucesso - retornar dados
     console.log(`Consulta realizada com sucesso. Status: ${response.status}`);
-    
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         sucesso: true,
         ambiente,
         dados: data,
         timestamp: new Date().toISOString()
-      }), 
-      { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-        status: 200 
-      }
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
 
   } catch (err) {
     console.error("Erro interno na função:", err);
-    
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: "Erro interno ao processar requisição",
         detalhes: err instanceof Error ? err.message : String(err)
-      }), 
-      { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-        status: 500 
-      }
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });
