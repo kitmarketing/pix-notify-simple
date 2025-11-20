@@ -55,7 +55,7 @@ serve(async (req) => {
     );
 
     const CHAVE_PIX = Deno.env.get("CHAVE_PIX")!;
-    const BB_API_URL = `https://api-pix.bb.com.br/pix/v2/recebidos?chave=${CHAVE_PIX}&status=LIQUIDADO`;
+    const BB_API_URL = `https://pix.zapinteligente.com/pix/recebidos?chave=${CHAVE_PIX}&status=LIQUIDADO`;
     
     // Tentar usar token existente
     let BB_TOKEN: string | null | undefined = Deno.env.get("BB_BEARER_TOKEN");

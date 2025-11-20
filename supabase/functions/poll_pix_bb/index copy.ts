@@ -66,7 +66,7 @@ async function consultarPixBB(token: string): Promise<any[]> {
   const inicio = formatarData(duasHorasAtras);
   const fim = formatarData(agora);
 
-  const url = `https://api-pix.bb.com.br/pix/v2/pix?inicio=${encodeURIComponent(inicio)}&fim=${encodeURIComponent(fim)}`;
+  const url = `https://pix.zapinteligente.com/pix?inicio=${encodeURIComponent(inicio)}&fim=${encodeURIComponent(fim)}`;
 
   console.log(`📡 Consultando PIX de ${inicio} até ${fim}`);
 
