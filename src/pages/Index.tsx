@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { DollarSign, Clock, User } from "lucide-react";
+import { DollarSign, Clock, User, Wifi, WifiOff, Loader2 } from "lucide-react";
 
 interface PixRecebido {
   id: string;
@@ -16,6 +17,30 @@ interface PixRecebido {
 const Index = () => {
   const [pixList, setPixList] = useState<PixRecebido[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiStatus, setApiStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle');
+
+  // Testar conexão com a API do BB
+  const testApiConnection = async () => {
+    setApiStatus('checking');
+    try {
+      const { data, error } = await supabase.functions.invoke('poll_pix_bb', {
+        body: {}
+      });
+      
+      if (error) throw error;
+      
+      setApiStatus('connected');
+      toast.success('Conectado com a API do BB', {
+        description: 'A conexão está funcionando corretamente'
+      });
+    } catch (error) {
+      console.error('Erro ao testar conexão:', error);
+      setApiStatus('error');
+      toast.error('Erro na conexão com a API', {
+        description: 'Verifique os logs para mais detalhes'
+      });
+    }
+  };
 
   // Buscar PIX recebidos de hoje
   const fetchPix = async () => {
@@ -100,13 +125,29 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            Painel de PIX Recebidos
-          </h1>
-          <p className="text-muted-foreground">
-            Monitoramento em tempo real dos PIX do Banco do Brasil
-          </p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">
+              Painel de PIX Recebidos
+            </h1>
+            <p className="text-muted-foreground">
+              Monitoramento em tempo real dos PIX do Banco do Brasil
+            </p>
+          </div>
+          <Button
+            onClick={testApiConnection}
+            disabled={apiStatus === 'checking'}
+            variant={apiStatus === 'error' ? 'destructive' : apiStatus === 'connected' ? 'default' : 'outline'}
+            className="gap-2"
+          >
+            {apiStatus === 'checking' && <Loader2 className="h-4 w-4 animate-spin" />}
+            {apiStatus === 'connected' && <Wifi className="h-4 w-4" />}
+            {apiStatus === 'error' && <WifiOff className="h-4 w-4" />}
+            {apiStatus === 'idle' && <Wifi className="h-4 w-4" />}
+            {apiStatus === 'checking' ? 'Testando...' : 
+             apiStatus === 'connected' ? 'Conectado' : 
+             apiStatus === 'error' ? 'Erro na API' : 'Testar Conexão'}
+          </Button>
         </div>
 
         <div className="mb-6">
